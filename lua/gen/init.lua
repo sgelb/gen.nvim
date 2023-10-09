@@ -52,8 +52,25 @@ local function get_window_options()
 	}
 end
 
+local function complete_for(arg_lead, tbl)
+	-- search for (partial) match
+	local matches = {}
+	for key, _ in pairs(tbl) do
+		if key:match(arg_lead) then
+			table.insert(matches, key)
+		end
+	end
+
+	if next(matches) == nil then
+		-- list all models in completion if no match
+		return tbl
+	else
+		-- otherwise only list models matching current input
+		return matches
+	end
+end
+
 M.command = "ollama run $model $prompt"
-M.model = "mistral:instruct"
 
 M.exec = function(options)
 	local opts = vim.tbl_deep_extend("force", {
@@ -165,6 +182,31 @@ function select_prompt(cb)
 	end)
 end
 
+M.model = "mistral:instruct"
+M.models = {}
+
+vim.api.nvim_create_user_command("GenModel", function(arg)
+	-- TODO: if arg.args is empty, show current model
+	if next(arg.fargs) == nil then
+		print("Current set model: " .. M.model)
+	else
+		M.model = arg.args
+	end
+end, {
+	nargs = "*",
+	complete = function(arg_lead, _, _)
+		-- get installed models and cache in M.models
+		if next(M.models) == nil then
+			local result = vim.fn.system("ollama list")
+			for model in result:gmatch("(%w+:%w+)%s+") do
+				M.models[model] = model
+			end
+		end
+
+    return complete_for(arg_lead, M.models)
+	end,
+})
+
 vim.api.nvim_create_user_command("Gen", function(arg)
 	local mode
 	if arg.range == 0 then
@@ -181,10 +223,12 @@ vim.api.nvim_create_user_command("Gen", function(arg)
 		p = vim.tbl_deep_extend("force", { mode = mode }, prompt)
 		return M.exec(p)
 	end
-	select_prompt(function(item)
-		p = vim.tbl_deep_extend("force", { mode = mode }, M.prompts[item])
-		M.exec(p)
-	end)
-end, { range = true, nargs = "?" })
+end, {
+	range = true,
+	nargs = "*",
+	complete = function(arg_lead, _, _)
+    return complete_for(arg_lead, M.prompts)
+	end,
+})
 
 return M
