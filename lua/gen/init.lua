@@ -1,5 +1,5 @@
-local prompts = require("gen.prompts")
 local M = {}
+M.prompts = require("gen.prompts")
 
 local curr_buffer = nil
 local start_pos = nil
@@ -19,6 +19,29 @@ local function trim_table(tbl)
 	end
 
 	return tbl
+end
+
+local function serve_ollama()
+	local ok, handle = pcall(io.popen, 'ps -axo args | grep "^ollama serve$"', "r")
+	if not ok or not handle then
+		return false
+	end
+	local result = handle:read("*a") ~= ""
+	handle:close()
+	--
+	-- TODO: refactor in own function as it is prequisite for all Gen* commands
+	if not result then
+		require("luadev").print("Ollama serve not running")
+		local serve_job_id = vim.fn.jobstart("ollama serve > /dev/null 2>&1")
+		vim.api.nvim_create_autocmd("VimLeave", {
+			callback = function()
+				vim.fn.jobstop(serve_job_id)
+			end,
+			group = vim.api.nvim_create_augroup("_gen_leave", { clear = true }),
+		})
+	else
+		require("luadev").print("Ollama serve already running")
+	end
 end
 
 local function get_window_options()
@@ -70,14 +93,30 @@ local function complete_for(arg_lead, tbl)
 	end
 end
 
+-- read setup
+M.setup = function(config)
+	-- Example opts for lazy.nvim
+	-- opts = {
+	-- 	default_model = "codellama:7b",
+	-- 	prompts = {
+	-- 		Test = { prompt = "Count from 10 downward to 5", replace = false },
+	-- 	}
+	M.prompts = vim.tbl_deep_extend("force", M.prompts, config.prompts)
+	if config.default_model ~= nil then
+		M.model = config.default_model
+	end
+end
+
 M.command = "ollama run $model $prompt"
 
 M.exec = function(options)
+	serve_ollama()
+
 	local opts = vim.tbl_deep_extend("force", {
 		model = M.model,
 		command = M.command,
 	}, options)
-	pcall(io.popen, "ollama serve > /dev/null 2>&1 &")
+
 	curr_buffer = vim.fn.bufnr("%")
 	local mode = opts.mode or vim.fn.mode()
 	if mode == "v" or mode == "V" then
@@ -94,6 +133,8 @@ M.exec = function(options)
 		vim.api.nvim_buf_get_text(curr_buffer, start_pos[2] - 1, start_pos[3] - 1, end_pos[2] - 1, end_pos[3] - 1, {}),
 		"\n"
 	)
+
+	require("luadev").print(content)
 
 	local function substitute_placeholders(input)
 		if not input then
@@ -166,7 +207,6 @@ M.exec = function(options)
 	})
 end
 
-M.prompts = prompts
 function select_prompt(cb)
 	local promptKeys = {}
 	for key, _ in pairs(M.prompts) do
@@ -182,10 +222,12 @@ function select_prompt(cb)
 	end)
 end
 
-M.model = "mistral:instruct"
+M.model = "codellama:7b"
 M.models = {}
 
 vim.api.nvim_create_user_command("GenModel", function(arg)
+	serve_ollama()
+
 	-- TODO: if arg.args is empty, show current model
 	if next(arg.fargs) == nil then
 		print("Current set model: " .. M.model)
@@ -203,7 +245,7 @@ end, {
 			end
 		end
 
-    return complete_for(arg_lead, M.models)
+		return complete_for(arg_lead, M.models)
 	end,
 })
 
@@ -221,13 +263,14 @@ vim.api.nvim_create_user_command("Gen", function(arg)
 			return
 		end
 		p = vim.tbl_deep_extend("force", { mode = mode }, prompt)
+		require("luadev").print(prompt)
 		return M.exec(p)
 	end
 end, {
 	range = true,
 	nargs = "*",
 	complete = function(arg_lead, _, _)
-    return complete_for(arg_lead, M.prompts)
+		return complete_for(arg_lead, M.prompts)
 	end,
 })
 
