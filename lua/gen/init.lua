@@ -22,16 +22,8 @@ local function trim_table(tbl)
 end
 
 local function serve_ollama()
-	local ok, handle = pcall(io.popen, 'ps -axo args | grep "^ollama serve$"', "r")
-	if not ok or not handle then
-		return false
-	end
-	local result = handle:read("*a") ~= ""
-	handle:close()
-	--
-	-- TODO: refactor in own function as it is prequisite for all Gen* commands
-	if not result then
-		require("luadev").print("Ollama serve not running")
+	local ollama_is_not_running = vim.fn.system('ps -axo args | grep "^ollama serve$"') == ""
+	if ollama_is_not_running then
 		local serve_job_id = vim.fn.jobstart("ollama serve > /dev/null 2>&1")
 		vim.api.nvim_create_autocmd("VimLeave", {
 			callback = function()
@@ -39,8 +31,6 @@ local function serve_ollama()
 			end,
 			group = vim.api.nvim_create_augroup("_gen_leave", { clear = true }),
 		})
-	else
-		require("luadev").print("Ollama serve already running")
 	end
 end
 
