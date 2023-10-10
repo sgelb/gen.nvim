@@ -22,7 +22,7 @@ local function trim_table(tbl)
 end
 
 local function serve_ollama()
-	local ollama_is_not_running = vim.fn.system('ps -axo args | grep "^ollama serve$"') == ""
+	local ollama_is_not_running = vim.fn.system('pgrep --full --exact "ollama serve"') == ""
 	if ollama_is_not_running then
 		local serve_job_id = vim.fn.jobstart("ollama serve > /dev/null 2>&1")
 		vim.api.nvim_create_autocmd("VimLeave", {
