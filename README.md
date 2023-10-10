@@ -28,6 +28,26 @@ You can also directly invoke it with one of the [predefined prompts](./lua/gen/p
 vim.keymap.set('v', '<leader>]', ':Gen Enhance_Grammar_Spelling<CR>')
 ```
 
+## Setup with lazy.nvim
+
+
+```lua
+{
+    "sgelb/gen.nvim"
+	cmd = { "Gen", "GenModel" },
+	opts = {
+		default_model = "codellama:7b",
+		prompts = {
+			UnitTest = {
+				prompt = "Write unit tests for the following code. Output the result in the format ```$filetype\n...\n```:\n```$filetype\n$text\n```",
+				replace = false,
+				extract = "```$filetype\n(.-)```",
+			},
+		},
+	},
+}
+```
+
 ## Options
 
 All prompts are defined in `require('gen').prompts`, you can enhance or modify them.

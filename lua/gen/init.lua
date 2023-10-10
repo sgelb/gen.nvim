@@ -35,30 +35,25 @@ local function serve_ollama()
 end
 
 local function get_window_options()
-	local width = math.floor(vim.o.columns * 0.9) -- 90% of the current editor's width
-	local height = math.floor(vim.o.lines * 0.9)
-	local row = math.floor((vim.o.lines - height) / 2)
-	local col = math.floor((vim.o.columns - width) / 2)
-
 	local cursor = vim.api.nvim_win_get_cursor(0)
-	local new_win_width = vim.api.nvim_win_get_width(0)
+	local width = vim.api.nvim_win_get_width(0)
 	local win_height = vim.api.nvim_win_get_height(0)
 
 	local middle_row = win_height / 2
 
-	local new_win_height = math.floor(win_height / 2)
-	local new_win_row
+	local height = math.floor(win_height / 2)
+	local win_row
 	if cursor[1] <= middle_row then
-		new_win_row = 5
+		win_row = 5
 	else
-		new_win_row = -5 - new_win_height
+		win_row = -5 - height
 	end
 
 	return {
 		relative = "cursor",
-		width = new_win_width,
-		height = new_win_height,
-		row = new_win_row,
+		width = width,
+		height = height,
+		row = win_row,
 		col = 0,
 		style = "minimal",
 		border = "single",
@@ -124,8 +119,6 @@ M.exec = function(options)
 		"\n"
 	)
 
-	require("luadev").print(content)
-
 	local function substitute_placeholders(input)
 		if not input then
 			return
@@ -145,33 +138,33 @@ M.exec = function(options)
 	local cmd = opts.command
 	cmd = string.gsub(cmd, "%$prompt", prompt)
 	cmd = string.gsub(cmd, "%$model", opts.model)
-	if result_buffer then
-		vim.cmd("bd" .. result_buffer)
+	if Result_buffer then
+		vim.cmd("bd" .. Result_buffer)
 	end
 	local win_opts = get_window_options()
-	result_buffer = vim.api.nvim_create_buf(false, true)
-	vim.api.nvim_buf_set_option(result_buffer, "filetype", "markdown")
+	Result_buffer = vim.api.nvim_create_buf(false, true)
+	vim.api.nvim_buf_set_option(Result_buffer, "filetype", "markdown")
 
-	local float_win = vim.api.nvim_open_win(result_buffer, true, win_opts)
+	vim.api.nvim_open_win(Result_buffer, true, win_opts)
 
 	local result_string = ""
 	local lines = {}
 	local job_id = vim.fn.jobstart(cmd, {
 		on_stdout = function(_, data, _)
 			result_string = result_string .. table.concat(data, "\n")
-			lines = vim.split(result_string, "\n", true)
-			vim.api.nvim_buf_set_lines(result_buffer, 0, -1, false, lines)
+			lines = vim.split(result_string, "\n", { true })
+			vim.api.nvim_buf_set_lines(Result_buffer, 0, -1, false, lines)
 			vim.fn.feedkeys("$")
 		end,
-		on_exit = function(a, b)
+		on_exit = function(_, b)
 			if b == 0 and opts.replace then
 				if extractor then
 					local extracted = result_string:match(extractor)
 					if not extracted then
-						vim.cmd("bd " .. result_buffer)
+						vim.cmd("bd " .. Result_buffer)
 						return
 					end
-					lines = vim.split(extracted, "\n", true)
+					lines = vim.split(extracted, "\n", { true })
 				end
 				lines = trim_table(lines)
 				vim.api.nvim_buf_set_text(
@@ -182,35 +175,35 @@ M.exec = function(options)
 					end_pos[3] - 1,
 					lines
 				)
-				vim.cmd("bd " .. result_buffer)
+				vim.cmd("bd " .. Result_buffer)
 			end
 		end,
 	})
 	vim.keymap.set("n", "<esc>", function()
 		vim.fn.jobstop(job_id)
-	end, { buffer = result_buffer })
+	end, { buffer = Result_buffer })
 
-	vim.api.nvim_buf_attach(result_buffer, false, {
+	vim.api.nvim_buf_attach(Result_buffer, false, {
 		on_detach = function()
-			result_buffer = nil
+			Result_buffer = nil
 		end,
 	})
 end
 
-function select_prompt(cb)
-	local promptKeys = {}
-	for key, _ in pairs(M.prompts) do
-		table.insert(promptKeys, key)
-	end
-	vim.ui.select(promptKeys, {
-		prompt = "Prompt:",
-		format_item = function(item)
-			return table.concat(vim.split(item, "_"), " ")
-		end,
-	}, function(item, idx)
-		cb(item)
-	end)
-end
+-- local function select_prompt(cb)
+-- 	local promptKeys = {}
+-- 	for key, _ in pairs(M.prompts) do
+-- 		table.insert(promptKeys, key)
+-- 	end
+-- 	vim.ui.select(promptKeys, {
+-- 		prompt = "Prompt:",
+-- 		format_item = function(item)
+-- 			return table.concat(vim.split(item, "_"), " ")
+-- 		end,
+-- 	}, function(item, idx)
+-- 		cb(item)
+-- 	end)
+-- end
 
 M.model = "codellama:7b"
 M.models = {}
@@ -252,7 +245,7 @@ vim.api.nvim_create_user_command("Gen", function(arg)
 			print("Invalid prompt '" .. arg.args .. "'")
 			return
 		end
-		p = vim.tbl_deep_extend("force", { mode = mode }, prompt)
+		local p = vim.tbl_deep_extend("force", { mode = mode }, prompt)
 		require("luadev").print(prompt)
 		return M.exec(p)
 	end
