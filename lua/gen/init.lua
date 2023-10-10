@@ -86,6 +86,7 @@ M.setup = function(config)
 	-- 	prompts = {
 	-- 		Test = { prompt = "Count from 10 downward to 5", replace = false },
 	-- 	}
+	serve_ollama()
 	M.prompts = vim.tbl_deep_extend("force", M.prompts, config.prompts)
 	if config.default_model ~= nil then
 		M.model = config.default_model
@@ -95,8 +96,6 @@ end
 M.command = "ollama run $model $prompt"
 
 M.exec = function(options)
-	serve_ollama()
-
 	local opts = vim.tbl_deep_extend("force", {
 		model = M.model,
 		command = M.command,
@@ -209,8 +208,6 @@ M.model = "codellama:7b"
 M.models = {}
 
 vim.api.nvim_create_user_command("GenModel", function(arg)
-	serve_ollama()
-
 	-- TODO: if arg.args is empty, show current model
 	if next(arg.fargs) == nil then
 		print("Current set model: " .. M.model)
