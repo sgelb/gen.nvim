@@ -1,38 +1,12 @@
+local api = require("ollama.api")
 local M = {}
-M.prompts = require("gen.prompts")
+
+M.prompts = require("ollama.prompts")
+M.models = {}
 
 local curr_buffer = nil
 local start_pos = nil
 local end_pos = nil
-
-local function trim_table(tbl)
-	local function is_whitespace(str)
-		return str:match("^%s*$") ~= nil
-	end
-
-	while #tbl > 0 and (tbl[1] == "" or is_whitespace(tbl[1])) do
-		table.remove(tbl, 1)
-	end
-
-	while #tbl > 0 and (tbl[#tbl] == "" or is_whitespace(tbl[#tbl])) do
-		table.remove(tbl, #tbl)
-	end
-
-	return tbl
-end
-
-local function serve_ollama()
-	local ollama_is_not_running = vim.fn.system('pgrep --full --exact "ollama serve"') == ""
-	if ollama_is_not_running then
-		local serve_job_id = vim.fn.jobstart("ollama serve > /dev/null 2>&1")
-		vim.api.nvim_create_autocmd("VimLeave", {
-			callback = function()
-				vim.fn.jobstop(serve_job_id)
-			end,
-			group = vim.api.nvim_create_augroup("_gen_leave", { clear = true }),
-		})
-	end
-end
 
 local function get_window_options()
 	local cursor = vim.api.nvim_win_get_cursor(0)
@@ -78,7 +52,6 @@ local function complete_for(arg_lead, tbl)
 	end
 end
 
--- read setup
 M.setup = function(config)
 	-- Example opts for lazy.nvim
 	-- opts = {
@@ -86,11 +59,15 @@ M.setup = function(config)
 	-- 	prompts = {
 	-- 		Test = { prompt = "Count from 10 downward to 5", replace = false },
 	-- 	}
-	serve_ollama()
+
+	api.serve_ollama()
 	M.prompts = vim.tbl_deep_extend("force", M.prompts, config.prompts)
 	if config.default_model ~= nil then
 		M.model = config.default_model
 	end
+	-- FIXME: remove hardcoded 1000ms and wait until api is up and running
+	os.execute("sleep 1")
+	M.models = api.get_models()
 end
 
 M.command = "ollama run $model $prompt"
@@ -133,53 +110,32 @@ M.exec = function(options)
 	end
 
 	local prompt = vim.fn.shellescape(substitute_placeholders(opts.prompt))
-	local extractor = substitute_placeholders(opts.extract)
-	local cmd = opts.command
-	cmd = string.gsub(cmd, "%$prompt", prompt)
-	cmd = string.gsub(cmd, "%$model", opts.model)
-	if Result_buffer then
-		vim.cmd("bd" .. Result_buffer)
-	end
-	local win_opts = get_window_options()
 	Result_buffer = vim.api.nvim_create_buf(false, true)
 	vim.api.nvim_buf_set_option(Result_buffer, "filetype", "markdown")
 
-	vim.api.nvim_open_win(Result_buffer, true, win_opts)
+	vim.api.nvim_open_win(Result_buffer, true, get_window_options())
 
-	local result_string = ""
-	local lines = {}
-	local job_id = vim.fn.jobstart(cmd, {
-		on_stdout = function(_, data, _)
-			result_string = result_string .. table.concat(data, "\n")
-			lines = vim.split(result_string, "\n", { true })
-			vim.api.nvim_buf_set_lines(Result_buffer, 0, -1, false, lines)
-			vim.fn.feedkeys("$")
-		end,
-		on_exit = function(_, b)
-			if b == 0 and opts.replace then
-				if extractor then
-					local extracted = result_string:match(extractor)
-					if not extracted then
-						vim.cmd("bd " .. Result_buffer)
-						return
-					end
-					lines = vim.split(extracted, "\n", { true })
-				end
-				lines = trim_table(lines)
-				vim.api.nvim_buf_set_text(
-					curr_buffer,
-					start_pos[2] - 1,
-					start_pos[3] - 1,
-					end_pos[2] - 1,
-					end_pos[3] - 1,
-					lines
-				)
-				vim.cmd("bd " .. Result_buffer)
-			end
-		end,
+	local on_stdout = function(streamed_result)
+		vim.api.nvim_buf_set_lines(Result_buffer, 0, -1, false, vim.split(streamed_result, "\n", { true }))
+		vim.fn.feedkeys("$")
+	end
+
+	local on_exit = function(context)
+		Context = context
+	end
+
+	local job = api.generate({
+		model = opts.model,
+		prompt = prompt,
+		on_stdout = on_stdout,
+		on_exit = on_exit,
+		context = Context,
 	})
+
 	vim.keymap.set("n", "<esc>", function()
-		vim.fn.jobstop(job_id)
+		if job then
+			job:shutdown(0, 3)
+		end
 	end, { buffer = Result_buffer })
 
 	vim.api.nvim_buf_attach(Result_buffer, false, {
@@ -189,25 +145,9 @@ M.exec = function(options)
 	})
 end
 
--- local function select_prompt(cb)
--- 	local promptKeys = {}
--- 	for key, _ in pairs(M.prompts) do
--- 		table.insert(promptKeys, key)
--- 	end
--- 	vim.ui.select(promptKeys, {
--- 		prompt = "Prompt:",
--- 		format_item = function(item)
--- 			return table.concat(vim.split(item, "_"), " ")
--- 		end,
--- 	}, function(item, idx)
--- 		cb(item)
--- 	end)
--- end
-
 M.model = "codellama:7b"
-M.models = {}
 
-vim.api.nvim_create_user_command("GenModel", function(arg)
+vim.api.nvim_create_user_command("OllamaModel", function(arg)
 	-- TODO: if arg.args is empty, show current model
 	if next(arg.fargs) == nil then
 		print("Current set model: " .. M.model)
@@ -219,17 +159,14 @@ end, {
 	complete = function(arg_lead, _, _)
 		-- get installed models and cache in M.models
 		if next(M.models) == nil then
-			local result = vim.fn.system("ollama list")
-			for model in result:gmatch("(%w+:%w+)%s+") do
-				M.models[model] = model
-			end
+			M.models = api.get_models()
 		end
 
 		return complete_for(arg_lead, M.models)
 	end,
 })
 
-vim.api.nvim_create_user_command("Gen", function(arg)
+vim.api.nvim_create_user_command("Ollama", function(arg)
 	local mode
 	if arg.range == 0 then
 		mode = "n"
@@ -242,8 +179,12 @@ vim.api.nvim_create_user_command("Gen", function(arg)
 			print("Invalid prompt '" .. arg.args .. "'")
 			return
 		end
+
+		if prompt["model"] and M.models[prompt["model"]] == nil then
+			print("Invalid model '" .. prompt["model"] .. "' in prompt '" .. arg.args .. "'")
+			return
+		end
 		local p = vim.tbl_deep_extend("force", { mode = mode }, prompt)
-		require("luadev").print(prompt)
 		return M.exec(p)
 	end
 end, {

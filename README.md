@@ -1,42 +1,44 @@
-# gen.nvim
+# ollama.nvim
 
 Generate text using LLMs with customizable prompts
 
-## Video
-
-[![Local LLMs in Neovim: gen.nvim](https://user-images.githubusercontent.com/1009936/273126287-7b5f2b40-c678-47c5-8f21-edf9516f6034.jpg)](https://youtu.be/FIZt7MinpMY?si=KChSuJJDyrcTdYiM)
-
-
 ## Requires
 
-- [Ollama](https://ollama.ai/) with model [`mistral:instruct`](https://ollama.ai/library/mistral) (customizable)
+- [Ollama](https://ollama.ai/)
+- Curl
 
 ## Usage
 
-Use command `Gen` to generate text based on predefined and customizable prompts.
+Use command `Ollama` to generate text based on predefined and customizable prompts. If Ollama is not running, it is automatically started.
 
 Example key maps:
 
 ```lua
-vim.keymap.set('v', '<leader>]', ':Gen<CR>')
-vim.keymap.set('n', '<leader>]', ':Gen<CR>')
+vim.keymap.set('v', '<leader>]', ':Ollama<CR>')
+vim.keymap.set('n', '<leader>]', ':Ollama<CR>')
 ```
 
-You can also directly invoke it with one of the [predefined prompts](./lua/gen/prompts.lua):
+You can also directly invoke it with a [predefined](./lua/ollama/prompts.lua) or a custom prompt:
 
 ```lua
-vim.keymap.set('v', '<leader>]', ':Gen Enhance_Grammar_Spelling<CR>')
+vim.keymap.set('v', '<leader>]', ':Ollama Enhance_Grammar_Spelling<CR>')
 ```
+
+Use command `OllamaModel` to show locally available models and change the default model for this session.
+
 
 ## Setup with lazy.nvim
 
 
 ```lua
 {
-    "sgelb/gen.nvim"
-	cmd = { "Gen", "GenModel" },
+    "sgelb/ollama.nvim"
+	cmd = { "Ollama", "OllamaModel" },
+	dependencies = {
+		{ "nvim-lua/plenary.nvim" },
 	opts = {
 		default_model = "codellama:7b",
+        -- custom prompts
 		prompts = {
 			UnitTest = {
 				prompt = "Write unit tests for the following code. Output the result in the format ```$filetype\n...\n```:\n```$filetype\n$text\n```",
@@ -50,18 +52,13 @@ vim.keymap.set('v', '<leader>]', ':Gen Enhance_Grammar_Spelling<CR>')
 
 ## Options
 
-All prompts are defined in `require('gen').prompts`, you can enhance or modify them.
+Predefined prompts are available th`require('ollama').prompts`, you can enhance or modify them.
 
 Example:
 ```lua
-require('gen').prompts['Elaborate_Text'] = {
+require('ollama').prompts['Elaborate_Text'] = {
   prompt = "Elaborate the following text:\n$text",
   replace = true
-}
-require('gen').prompts['Fix_Code'] = {
-  prompt = "Fix the following code. Only ouput the result in format ```$filetype\n...\n```:\n```$filetype\n$text\n```",
-  replace = true,
-  extract = "```$filetype\n(.-)```"
 }
 ```
 
@@ -77,7 +74,7 @@ You can use the following properties per prompt:
 You can change the model with
 
 ```lua
-require('gen').model = 'your_model' -- default 'mistal:instruct'
+require('ollama').model = 'your_model' -- default 'mistal:instruct'
 ```
 
 Here are all [available models](https://ollama.ai/library).
@@ -85,7 +82,7 @@ Here are all [available models](https://ollama.ai/library).
 You can also change the complete command with
 
 ```lua
-require('gen').command = 'your command' -- default 'ollama run $model $prompt'
+require('ollama').command = 'your command' -- default 'ollama run $model $prompt'
 ```
 
 You can use the placeholders `$model` and `$prompt`.
