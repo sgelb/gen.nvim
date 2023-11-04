@@ -117,14 +117,16 @@ M.exec = function(options)
 
 	local on_stdout = function(streamed_result)
 		vim.api.nvim_buf_set_lines(Result_buffer, 0, -1, false, vim.split(streamed_result, "\n", { true }))
-		vim.fn.feedkeys("$")
+		vim.api.nvim_win_call(Result_buffer, function()
+			vim.fn.feedkeys("$")
+		end)
 	end
 
 	local on_exit = function(context)
 		Context = context
 	end
 
-	local job = api.generate({
+	Job = api.generate({
 		model = opts.model,
 		prompt = prompt,
 		on_stdout = on_stdout,
@@ -133,8 +135,8 @@ M.exec = function(options)
 	})
 
 	vim.keymap.set("n", "<esc>", function()
-		if job then
-			job:shutdown(0, 3)
+		if Job then
+			Job:shutdown(0, 3)
 		end
 	end, { buffer = Result_buffer })
 
