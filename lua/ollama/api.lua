@@ -16,7 +16,7 @@ local create_callback = function(on_stdout, on_exit)
 		end
 
     -- cancel job if floating window was closed
-    if not vim.api.nvim_win_is_valid(Result_buffer) then
+    if not vim.api.nvim_win_is_valid(Float_Win) then
       Job:shutdown(0, 3)
       return
     end

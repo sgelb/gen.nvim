@@ -113,13 +113,10 @@ M.exec = function(options)
 	Result_buffer = vim.api.nvim_create_buf(false, true)
 	vim.api.nvim_buf_set_option(Result_buffer, "filetype", "markdown")
 
-	vim.api.nvim_open_win(Result_buffer, true, get_window_options())
+	Float_Win = vim.api.nvim_open_win(Result_buffer, true, get_window_options())
 
 	local on_stdout = function(streamed_result)
 		vim.api.nvim_buf_set_lines(Result_buffer, 0, -1, false, vim.split(streamed_result, "\n", { true }))
-		vim.api.nvim_win_call(Result_buffer, function()
-			vim.fn.feedkeys("$")
-		end)
 	end
 
 	local on_exit = function(context)
